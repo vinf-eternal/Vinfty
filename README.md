@@ -1,0 +1,82 @@
+# V∞ (vinfty)
+
+**Cognitive observability layer for any LLM orchestration framework.**
+
+Vinfty is a featherweight (~300 lines) Python library that adds cognitive observability to your LLM pipelines — without replacing your existing tools. It measures **ont_self** (self-consistency), tracks **C_ij coupling** (cross-session memory coherence), and detects **HMM s₀/s₁ state transitions** — so you know whether your system is healthy, not just whether it returned a valid JSON.
+
+```
+pip install vinfty
+```
+
+---
+
+## Why?
+
+LangChain, CrewAI, AutoGen — they all solve "how to call LLMs in sequence." None of them answer:
+
+- Is my agent system getting more coherent or more chaotic over time?
+- Are my tool calls producing consistent results or contradicting each other?
+- Is the system in a stable (s₀) or active-search (s₁) mode?
+
+Vinfty adds that layer. It wraps any orchestration framework and gives you a **cognitive dashboard**: ont_self trajectory, coupling matrix, HMM state, palace routing.
+
+## Quick Start
+
+```python
+from vinfty import V9Orchestrator
+
+engine = V9Orchestrator(active_k=100)
+
+# Register any function as a tool → maps to a Palace domain
+@engine.register(palace="P_search")
+def search_web(q: str) -> str:
+    return f"search results for {q}"
+
+@engine.register(palace="P_analysis")
+def calculate(expr: str) -> float:
+    return eval(expr)
+
+# Each call updates the cognitive state
+engine.step("search latest LLM papers", tool=search_web)
+engine.step("how many published this month?", tool=calculate)
+
+# Check system health
+report = engine.report()
+# → {
+#   "ont_self": 0.72,
+#   "hmm_state": "s0"|"s1",
+#   "palace_flow": ["P_query", "P_search", "P_analysis"],
+#   "c_ij_density": 0.34,
+#   "memory_count": 12,
+# }
+```
+
+## Core Concepts
+
+| Concept | What it measures | Analogy |
+|---------|-----------------|---------|
+| **ont_self** | System self-consistency | "Is my agent making consistent decisions?" |
+| **C_ij** | Cross-session memory coupling | "Do past decisions influence present ones coherently?" |
+| **HMM s₀/s₁** | Cognitive mode | "Is the system in stable execution (s₀) or active exploration (s₁)?" |
+| **Palace** | Functional domain | "Which cognitive domain is each tool call serving?" |
+
+## Adapters
+
+Vinfty ships with adapters for common frameworks:
+
+```python
+# LangChain adapter
+from vinfty.adapters.langchain import LangChainAdapter
+
+adapter = LangChainAdapter(agent)
+report = adapter.run_with_observability(user_query)
+# Same result as agent.run(), plus cognitive report
+```
+
+## No LLM Required
+
+Vinfty is pure symbolic computation — no API keys, no GPU, no model weights. The cognitive metrics are derived from the **structure** of your tool calls and memory traces, not from the content of LLM responses.
+
+## License
+
+MIT
