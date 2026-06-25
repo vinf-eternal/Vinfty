@@ -2,8 +2,8 @@ from setuptools import setup, find_packages
 
 setup(
     name="vinfty",
-    version="0.1.0",
-    description="V∞ — cognitive observability layer for any LLM orchestration framework",
+    version="0.2.0",
+    description="AI consistency auxiliary auditor — ont_self, C_ij coupling, HMM drift, barrier economics",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     author="V∞ Project",

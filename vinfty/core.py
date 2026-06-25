@@ -6,6 +6,7 @@ No LLM dependency. Pure symbolic computation:
   - C_ij = 1 when memories share a Palace label
   - HMM K=2 tracks s₀ (stable) / s₁ (searching) state
   - Palace routing assigns tool calls to cognitive domains
+  - Barrier economics adapts computation depth to hardware constraints
 """
 
 import math
@@ -13,17 +14,32 @@ import json
 from collections import defaultdict
 from typing import Callable, Optional
 
+from . import barrier as _barrier
+
 
 class V9Orchestrator:
-    """Lightweight cognitive engine tracking ont_self, C_ij coupling, HMM state."""
+    """Lightweight cognitive engine tracking ont_self, C_ij coupling, HMM state.
 
-    def __init__(self, active_k: int = 100):
+    Parameters
+    ----------
+    active_k : int
+        Max memories in active pool.
+    lambda_estimate : float or None
+        λ estimate for barrier economics. ``None`` = auto-detect.
+    """
+
+    def __init__(self, active_k: int = 100, lambda_estimate: Optional[float] = None):
         self.active_k = active_k
         self.memories: list[dict] = []
         self.archive: list[dict] = []
         self._palace_registry: dict[str, Callable] = {}
         self._hmm = _HMM()
         self._last_scan = -1
+        # Barrier economics
+        lam = lambda_estimate if lambda_estimate is not None else _barrier.auto_detect_lambda()
+        self._barrier = _barrier.LambdaScheduler(lam=lam)
+        self._mode = self._barrier.evaluate()["recommended_operator"]
+        self._eval_counter = 0
 
     # ── tool registration ──
 
@@ -58,6 +74,22 @@ class V9Orchestrator:
                 self.archive = self.archive[-2000:]
         # HMM update (convenience: rescan every step)
         self._scan_hmm()
+        # Re-evaluate barrier mode every 100 steps
+        self._eval_counter += 1
+        if self._eval_counter % 100 == 0:
+            self._mode = self._barrier.evaluate()["recommended_operator"]
+
+    def adapt(self, lambda_estimate: Optional[float] = None):
+        """Manually adjust barrier economics and re-evaluate mode.
+
+        Parameters
+        ----------
+        lambda_estimate : float or None
+            New λ value. ``None`` = auto-detect.
+        """
+        lam = lambda_estimate if lambda_estimate is not None else _barrier.auto_detect_lambda()
+        self._barrier.lam = lam
+        self._mode = self._barrier.evaluate()["recommended_operator"]
 
     def run(self, tasks: list[str], **extra):
         """Process multiple string tasks in sequence."""
@@ -67,10 +99,15 @@ class V9Orchestrator:
     # ── report ──
 
     def report(self) -> dict:
-        """Return current cognitive state summary."""
+        """Return current cognitive state summary with barrier economics."""
         ont = self.ont_self()
         c_density = self._coupling_density()
         palace_counts = self._palace_distribution()
+
+        # Barrier status
+        b = self._barrier
+        best = b._last_recommendation["best"] if b._last_recommendation else {}
+
         return {
             "ont_self": round(ont, 4),
             "c_ij_density": round(c_density, 4),
@@ -81,6 +118,13 @@ class V9Orchestrator:
             "palace_count": len(palace_counts),
             "palace_flow": [m.get("palace", "?") for m in self.memories[-5:]],
             "palace_distribution": palace_counts,
+            "barrier": {
+                "lambda": b.lam,
+                "mode": self._mode,
+                "scenario": b._classify_scenario(b.lam),
+                "L_total_star": best.get("L_total_star"),
+                "P_trans": best.get("P_trans"),
+            },
         }
 
     def ont_self(self) -> float:

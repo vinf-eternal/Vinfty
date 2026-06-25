@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: vinfty
-Version: 0.1.0
-Summary: V∞ — cognitive observability layer for any LLM orchestration framework
+Version: 0.2.0
+Summary: AI consistency auxiliary auditor — ont_self, C_ij coupling, HMM drift, barrier economics
 Home-page: https://github.com/twincosmos/vinfty
 Author: V∞ Project
 Author-email: vinfty@twincosmos.dev
@@ -27,11 +27,10 @@ Dynamic: license-file
 Dynamic: requires-python
 Dynamic: summary
 
-# V∞ (vinfty)
+# Vinfty — AI 一致性审计辅助引擎
 
-**Cognitive observability layer for any LLM orchestration framework.**
-
-Vinfty is a featherweight (~300 lines) Python library that adds cognitive observability to your LLM pipelines — without replacing your existing tools. It measures **ont_self** (self-consistency), tracks **C_ij coupling** (cross-session memory coherence), and detects **HMM s₀/s₁ state transitions** — so you know whether your system is healthy, not just whether it returned a valid JSON.
+**Vinfty 不是 AI 模型。它不训练、不拟合、不推理、不预测。**
+它只做一件事：作为外挂式辅助组件，**审计 AI 系统内部的自洽性**。
 
 ```
 pip install vinfty
@@ -39,72 +38,129 @@ pip install vinfty
 
 ---
 
-## Why?
+## 定位
 
-LangChain, CrewAI, AutoGen — they all solve "how to call LLMs in sequence." None of them answer:
+> Vinfty ≠ 另一个 LLM / 小样本分类库 / 微调框架
+> Vinfty = **AI Consistency Auxiliary Auditor**
 
-- Is my agent system getting more coherent or more chaotic over time?
-- Are my tool calls producing consistent results or contradicting each other?
-- Is the system in a stable (s₀) or active-search (s₁) mode?
+现有 AI 工具链（LangChain、LlamaIndex、EvidentlyAI、Prometheus）只追踪：
+- 日志、延迟、吞吐量
+- 准确率、召回率、损失曲线
 
-Vinfty adds that layer. It wraps any orchestration framework and gives you a **cognitive dashboard**: ont_self trajectory, coupling matrix, HMM state, palace routing.
+Vinfty 补上唯一缺失的维度：**认知一致性**。
 
-## Quick Start
+| 问题 | 传统工具 | Vinfty |
+|------|---------|--------|
+| 模型精度 99%？ | ✅ 是 | ❌ 不管 |
+| 内部自洽性在恶化？ | ❌ 看不见 | ✅ ont_self 追踪 |
+| 标注数据有没有矛盾簇？ | ❌ 人工抽检 | ✅ 自动审计 |
+| 小样本训练会不会先天跑偏？ | ❌ 凭经验 | ✅ 辅助预警 |
+| 线上模型精度还没跌，但内部已在坍缩？ | ❌ 不知道 | ✅ 寂静坍缩检测 |
 
-```python
-from vinfty import V9Orchestrator
+---
 
-engine = V9Orchestrator(active_k=100)
+## 模块
 
-# Register any function as a tool → maps to a Palace domain
-@engine.register(palace="P_search")
-def search_web(q: str) -> str:
-    return f"search results for {q}"
+| 模块 | 用途 | 状态 |
+|------|------|------|
+| `vinfty.judge` | 数据集一致性审计辅助（ont_self 打分、矛盾簇定位、标注冲突报告） | ✅ 可用 |
+| `vinfty.barrier` | 势垒经济学自适应观测深度调度（λ 控制审计精细度） | ✅ 可用 |
+| `vinfty.core` | V9Orchestrator 认知观测内核（300 行，零依赖） | ✅ 稳定 |
+| `vinfty.filter` | 小样本训练过程监控辅助（预留接口） | 📌 暂未实现 |
+| `vinfty.trace` | 线上模型认知漂移预警辅助（预留接口） | 📌 暂未实现 |
 
-@engine.register(palace="P_analysis")
-def calculate(expr: str) -> float:
-    return eval(expr)
+---
 
-# Each call updates the cognitive state
-engine.step("search latest LLM papers", tool=search_web)
-engine.step("how many published this month?", tool=calculate)
-
-# Check system health
-report = engine.report()
-# → {
-#   "ont_self": 0.72,
-#   "hmm_state": "s0"|"s1",
-#   "palace_flow": ["P_query", "P_search", "P_analysis"],
-#   "c_ij_density": 0.34,
-#   "memory_count": 12,
-# }
-```
-
-## Core Concepts
-
-| Concept | What it measures | Analogy |
-|---------|-----------------|---------|
-| **ont_self** | System self-consistency | "Is my agent making consistent decisions?" |
-| **C_ij** | Cross-session memory coupling | "Do past decisions influence present ones coherently?" |
-| **HMM s₀/s₁** | Cognitive mode | "Is the system in stable execution (s₀) or active exploration (s₁)?" |
-| **Palace** | Functional domain | "Which cognitive domain is each tool call serving?" |
-
-## Adapters
-
-Vinfty ships with adapters for common frameworks:
+## Quick Start：数据集审计
 
 ```python
-# LangChain adapter
-from vinfty.adapters.langchain import LangChainAdapter
+from vinfty.judge import audit_dataset
 
-adapter = LangChainAdapter(agent)
-report = adapter.run_with_observability(user_query)
-# Same result as agent.run(), plus cognitive report
+texts = [
+    "The cat sat on the mat.",
+    "The dog slept on the rug.",
+    "神经网络通过反向传播优化参数。",
+    "Transformer 使用自注意力机制。",
+    "Gradient descent minimizes the loss function.",
+    "北京是中国的首都。",
+    "Paris is the capital of France.",
+    "The quick brown fox jumps over the lazy dog.",
+]
+
+report = audit_dataset(texts, lambda_estimate=0.001)
+print(report["ont_self_mean"])         # 0.23
+print(report["n_palaces"])             # 7
+print(report["contradictions_top5"])   # 不一致样本对
+print(report["silent_collapse_risk"])  # green / yellow / red
 ```
+
+### 输出示例
+
+```json
+{
+  "n_samples": 8,
+  "ont_self_mean": 0.23,
+  "c_ij_density": 0.11,
+  "n_palaces": 7,
+  "palace_distribution": {
+    "P_hash_02": 2,
+    "P_hash_15": 1,
+    "P_hash_25": 1,
+    "P_hash_42": 1,
+    "P_hash_51": 1,
+    "P_hash_57": 1,
+    "P_hash_61": 1
+  },
+  "label_conflicts": [],
+  "silent_collapse_risk": "green",
+  "hmM_state": "s0",
+  "barrier": {
+    "lambda": 0.001,
+    "mode": "ODE",
+    "scenario": "pc_benchmark",
+    "L_total_star": 22.17,
+    "P_trans": 0.51
+  }
+}
+```
+
+### 带标注的数据集
+
+```python
+report = audit_dataset(
+    texts,
+    labels=["animal", "animal", "ML", "ML", "ML", "geo", "geo", "noise"],
+    lambda_estimate=0.001,
+)
+print(report["label_conflicts"])
+# → 如果同 label 映射到不同 Palace，说明标注边界有问题
+```
+
+---
+
+## 势垒经济学：审计也有成本
+
+`lambda_estimate` 控制审计深度——不是模型精度权衡，是 **观测开销-观测深度调度**。
+
+| 部署场景 | λ | 审计策略 |
+|----------|---|---------|
+| PC/服务器 | 0.001 | 深度精细审计，完整 9D 耦合计算 |
+| 数据中心 | 1e-5 | 高密度嵌套观测，批量扫描海量日志 |
+| 边缘设备 | 0.1 | 轻量化聚合审计，保留核心异常检出 |
+| MCU 嵌入式 | 100 | 极简统计式快速巡检 |
+
+```python
+report = audit_dataset(texts, lambda_estimate=0.1)  # 边缘端轻审计
+```
+
+---
 
 ## No LLM Required
 
-Vinfty is pure symbolic computation — no API keys, no GPU, no model weights. The cognitive metrics are derived from the **structure** of your tool calls and memory traces, not from the content of LLM responses.
+Vinfty 是纯符号计算——不需要 API Key、GPU、模型权重。
+所有认知指标来自**调用序列和记忆痕迹的结构**，而非 LLM 响应的内容。
+
+---
 
 ## License
 
